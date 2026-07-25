@@ -1,17 +1,19 @@
 # meridian_slam
 
-SLAM placeholder node: publishes one identity `PoseEstimate` per `RGBDFrame` (real SLAM is TBD).
+SLAM placeholder node: publishes one identity pose per camera frame (real SLAM is TBD).
 
 ## I/O
 
 | Topic | Type | Direction |
 |---|---|---|
-| /rgbd_frame | meridian_msgs/RGBDFrame | subscribe |
-| /pose_estimate | meridian_msgs/PoseEstimate | publish |
+| /camera/rgb | sensor_msgs/Image | subscribe |
+| /pose | geometry_msgs/PoseWithCovarianceStamped | publish |
 
 ## Parameters
 
-None.
+| Name | Type | Default | Description |
+|---|---|---|---|
+| world_frame_id | string | "map" | frame_id stamped into published poses |
 
 ## Run
 

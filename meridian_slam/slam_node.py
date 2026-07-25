@@ -2,7 +2,8 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
-from meridian_msgs.msg import RGBDFrame, PoseEstimate
+from geometry_msgs.msg import PoseWithCovarianceStamped
+from sensor_msgs.msg import Image
 
 
 class SlamNode(Node):
@@ -15,23 +16,24 @@ class SlamNode(Node):
             history=HistoryPolicy.KEEP_LAST,
             depth=10)
 
-        self.pose_pub = self.create_publisher(PoseEstimate, '/pose_estimate', qos)
+        self.declare_parameter('world_frame_id', 'map')
+        self.world_frame_id = self.get_parameter('world_frame_id').value
+
+        self.pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/pose', qos)
         self.frame_sub = self.create_subscription(
-            RGBDFrame, '/rgbd_frame', self.frame_callback, qos)
+            Image, '/camera/rgb', self.frame_callback, qos)
 
         self.frame_count = 0
 
-        self.get_logger().info('meridian_slam started: /rgbd_frame -> /pose_estimate')
+        self.get_logger().info('meridian_slam started: /camera/rgb -> /pose')
 
     def frame_callback(self, msg):
-        # V1 policy: one PoseEstimate per frame, identity pose, no retroactive revision.
-        pose_msg = PoseEstimate()
-        pose_msg.timestamp = msg.timestamp
-        pose_msg.world_t_camera.pose.orientation.w = 1.0
+        # V1 policy: one pose per frame, identity pose, no retroactive revision.
+        pose_msg = PoseWithCovarianceStamped()
+        pose_msg.header.stamp = msg.header.stamp
+        pose_msg.header.frame_id = self.world_frame_id
+        pose_msg.pose.pose.orientation.w = 1.0
         # position and covariance stay at their zero defaults
-        pose_msg.has_covariance = False
-        pose_msg.has_trajectory_revision = False
-        pose_msg.trajectory_revision = 0
 
         self.pose_pub.publish(pose_msg)
 
