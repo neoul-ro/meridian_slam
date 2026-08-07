@@ -1,0 +1,55 @@
+<?xml version="1.0"?>
+<!-- InnovizOne solid-state LiDAR.
+     2026년 기준 공개된 공식 URDF/메시가 없어서, 데이터시트 치수로 간이 박스 모델 작성.
+       - 크기: 95(D) x 110(W) x 45(H) mm  (45x110x95mm, 515g)
+       - 포인트클라우드는 '<name>' 프레임(광학 프레임)에 퍼블리시됨.
+         Innoviz 좌표계: X=전방(거리), Y=좌, Z=상  → 드라이버 frame_id 와 일치시킬 것.
+     사용: <xacro:innoviz_one parent="chassis" name="innoviz"><origin .../></xacro:innoviz_one> -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="innoviz_one" params="parent name:=innoviz *origin">
+
+    <!-- 물리 본체(박스). 전면 창은 +x 방향을 향함 -->
+    <link name="${name}_base_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.095 0.110 0.045"/>
+        </geometry>
+        <material name="innoviz_black">
+          <color rgba="0.12 0.12 0.13 1"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.095 0.110 0.045"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.515"/>
+        <!-- 박스 관성 (m=0.515, 0.095x0.110x0.045) -->
+        <inertia ixx="0.000606" ixy="0" ixz="0"
+                 iyy="0.000474" iyz="0"
+                 izz="0.000907"/>
+      </inertial>
+    </link>
+
+    <!-- parent(예: chassis)에 장착. 장착 위치는 호출부 <origin>으로 지정 -->
+    <joint name="${name}_mount_joint" type="fixed">
+      <xacro:insert_block name="origin"/>
+      <parent link="${parent}"/>
+      <child link="${name}_base_link"/>
+    </joint>
+
+    <!-- 광학/측정 프레임 = 포인트클라우드 frame_id. 전면 창(본체 +x 절반=0.0475m)에 위치 -->
+    <link name="${name}"/>
+    <joint name="${name}_optical_joint" type="fixed">
+      <origin xyz="0.0475 0 0" rpy="0 0 0"/>
+      <parent link="${name}_base_link"/>
+      <child link="${name}"/>
+    </joint>
+
+  </xacro:macro>
+</robot>

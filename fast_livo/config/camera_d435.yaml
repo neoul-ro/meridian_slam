@@ -1,0 +1,18 @@
+/**:
+  ros__parameters:
+    camera:
+      model: Pinhole
+      # Intel RealSense D435 color stream, factory calibration.
+      # Extracted from /camera/camera/color/camera_info in
+      # ~/rosbags/rosbag2_2026_07_25-20_20_30 (848x480, plumb_bob, zero distortion).
+      width: 848
+      height: 480
+      scale: 1.0
+      fx: 607.6361083984375
+      fy: 606.7900390625
+      cx: 431.2283630371094
+      cy: 245.33114624023438
+      d0: 0.0
+      d1: 0.0
+      d2: 0.0
+      d3: 0.0
