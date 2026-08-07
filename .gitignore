@@ -1,0 +1,4 @@
+fast_livo/Log/
+__pycache__/
+*.pyc
+tools/vn100_gyro_bias

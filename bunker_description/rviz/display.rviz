@@ -1,0 +1,392 @@
+Panels:
+  - Class: rviz_common/Displays
+    Help Height: 138
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /TF1
+      Splitter Ratio: 0.5
+    Tree Height: 272
+  - Class: rviz_common/Views
+    Expanded:
+      - /Current View1
+    Name: Views
+    Splitter Ratio: 0.5
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.5
+      Cell Size: 1
+      Class: rviz_default_plugins/Grid
+      Color: 160; 160; 164
+      Enabled: true
+      Line Style:
+        Line Width: 0.029999999329447746
+        Value: Lines
+      Name: Grid
+      Normal Cell Count: 0
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Plane: XY
+      Plane Cell Count: 10
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Alpha: 0.800000011920929
+      Class: rviz_default_plugins/RobotModel
+      Collision Enabled: false
+      Description File: ""
+      Description Source: Topic
+      Description Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /robot_description
+      Enabled: true
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: Links in Alphabetic Order
+        arm_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        cam1_bottom_screw_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        cam1_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        cam2_bottom_screw_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        cam2_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        kr_link_0:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        kr_link_1:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        kr_link_2:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        kr_link_3:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        kr_link_4:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        kr_link_5:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        kr_link_6:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        kr_link_7:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        kr_link_ee:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        kr_link_ee_kuka:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        wheel1.1_Link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel1.2_Link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel1.3_Link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel1_Link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel2.1_Link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel2.2_Link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel2.3_Link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel2_Link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel3.1_Link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel3.2_Link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel3.3_Link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel3_Link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel4.1_Link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel4.2_Link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel4.3_Link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel4_Link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+      Mass Properties:
+        Inertia: false
+        Mass: false
+      Name: RobotModel
+      TF Prefix: ""
+      Update Interval: 0
+      Value: true
+      Visual Enabled: true
+    - Class: rviz_default_plugins/TF
+      Enabled: true
+      Frame Timeout: 15
+      Frames:
+        All Enabled: true
+        arm_link:
+          Value: true
+        base_link:
+          Value: true
+        cam1_bottom_screw_frame:
+          Value: true
+        cam1_link:
+          Value: true
+        cam2_bottom_screw_frame:
+          Value: true
+        cam2_link:
+          Value: true
+        kr_link_0:
+          Value: true
+        kr_link_1:
+          Value: true
+        kr_link_2:
+          Value: true
+        kr_link_3:
+          Value: true
+        kr_link_4:
+          Value: true
+        kr_link_5:
+          Value: true
+        kr_link_6:
+          Value: true
+        kr_link_7:
+          Value: true
+        kr_link_ee:
+          Value: true
+        kr_link_ee_kuka:
+          Value: true
+        wheel1.1_Link:
+          Value: true
+        wheel1.2_Link:
+          Value: true
+        wheel1.3_Link:
+          Value: true
+        wheel1_Link:
+          Value: true
+        wheel2.1_Link:
+          Value: true
+        wheel2.2_Link:
+          Value: true
+        wheel2.3_Link:
+          Value: true
+        wheel2_Link:
+          Value: true
+        wheel3.1_Link:
+          Value: true
+        wheel3.2_Link:
+          Value: true
+        wheel3.3_Link:
+          Value: true
+        wheel3_Link:
+          Value: true
+        wheel4.1_Link:
+          Value: true
+        wheel4.2_Link:
+          Value: true
+        wheel4.3_Link:
+          Value: true
+        wheel4_Link:
+          Value: true
+      Marker Scale: 0.5
+      Name: TF
+      Show Arrows: false
+      Show Axes: true
+      Show Names: false
+      Tree:
+        base_link:
+          arm_link:
+            kr_link_0:
+              kr_link_1:
+                kr_link_2:
+                  kr_link_3:
+                    kr_link_4:
+                      kr_link_5:
+                        kr_link_6:
+                          kr_link_7:
+                            cam2_bottom_screw_frame:
+                              cam2_link:
+                                {}
+                            kr_link_ee:
+                              {}
+                            kr_link_ee_kuka:
+                              {}
+          cam1_bottom_screw_frame:
+            cam1_link:
+              {}
+          wheel1.1_Link:
+            {}
+          wheel1.2_Link:
+            {}
+          wheel1.3_Link:
+            {}
+          wheel1_Link:
+            {}
+          wheel2.1_Link:
+            {}
+          wheel2.2_Link:
+            {}
+          wheel2.3_Link:
+            {}
+          wheel2_Link:
+            {}
+          wheel3.1_Link:
+            {}
+          wheel3.2_Link:
+            {}
+          wheel3.3_Link:
+            {}
+          wheel3_Link:
+            {}
+          wheel4.1_Link:
+            {}
+          wheel4.2_Link:
+            {}
+          wheel4.3_Link:
+            {}
+          wheel4_Link:
+            {}
+      Update Interval: 0
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: base_link
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+  Transformation:
+    Current:
+      Class: rviz_default_plugins/TF
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 4.579442024230957
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.05999999865889549
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+      Focal Point:
+        X: 0.017405115067958832
+        Y: -0.0908755511045456
+        Z: 0.13217377662658691
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05000000074505806
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.009999999776482582
+      Pitch: 0.4399997889995575
+      Target Frame: <Fixed Frame>
+      Value: Orbit (rviz)
+      Yaw: 0.9268199801445007
+    Saved: ~
+Window Geometry:
+  Displays:
+    collapsed: false
+  Height: 939
+  Hide Left Dock: false
+  Hide Right Dock: false
+  QMainWindow State: 000000ff00000000fd00000001000000000000032400000351fc0200000002fb000000100044006900730070006c006100790073010000003d000001d7000000c900fffffffb0000000a00560069006500770073010000021a00000174000000a400ffffff000004560000035100000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  Views:
+    collapsed: false
+  Width: 1920
+  X: 0
+  Y: 32

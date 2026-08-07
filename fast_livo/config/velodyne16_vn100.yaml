@@ -1,0 +1,107 @@
+/**:
+  ros__parameters:
+    common:
+      img_topic: "/camera/camera/color/image_raw"
+      lid_topic: "/velodyne_points"
+      imu_topic: "/vectornav/imu"
+      img_en: 1
+      lidar_en: 1
+      ros_driver_bug_fix: false
+
+    extrin_calib:
+      # LiDAR -> IMU extrinsic (VLP-16 origin expressed in VN-100 frame).
+      # From bunker URDF mounts, assuming the VN-100 sits at the chassis
+      # origin (imu_link TF): velodyne is at (0.240, 0, 0.0943) in chassis.
+      # TODO(calibration): refine once the real IMU mount is measured.
+      extrinsic_T: [0.240, 0.0, 0.0943]
+      extrinsic_R: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+      # LiDAR -> camera extrinsic (p_cam = Rcl * p_lidar + Pcl).
+      # Rcl: D435 optical z-forward vs VLP-16 x-forward (both face +x).
+      # Pcl from URDF mounts: camera_link is (0.1506, 0.0175, 0.0553) from
+      # velodyne in chassis coords -> Pcl = -Rcl * t = [0.0175, 0.0553, -0.1506].
+      # TODO(calibration): refine with camera-LiDAR calibration (color optical
+      # origin is a few mm from camera_link).
+      Rcl: [0.0, -1.0, 0.0,
+            0.0, 0.0, -1.0,
+            1.0, 0.0, 0.0]
+      Pcl: [0.0175, 0.0553, -0.1506]
+
+    time_offset:
+      # All three sensors are separate devices without hardware sync.
+      # Tune these offsets if pointcloud/image lag behind IMU time.
+      lidar_time_offset: 0.0
+      imu_time_offset: 0.0
+      img_time_offset: 0.0
+      exposure_time_init: 0.0
+
+    preprocess:
+      point_filter_num: 2
+      filter_size_surf: 0.1
+      lidar_type: 2 # 2 = VELO16 (sensor_msgs/PointCloud2 from velodyne_pointcloud)
+      scan_line: 16
+      blind: 0.8 # VLP-16 minimum usable range [m]
+
+    vio:
+      max_iterations: 5
+      outlier_threshold: 1000
+      img_point_cov: 100
+      patch_size: 8
+      patch_pyrimid_level: 3
+      normal_en: true
+      raycast_en: false
+      inverse_composition_en: false
+      exposure_estimate_en: true
+      inv_expo_cov: 0.1
+
+    imu:
+      imu_en: true
+      imu_int_frame: 30
+      # VN-100S noise density is low; start from NTU-VIRAL (VN-100) values.
+      acc_cov: 0.5
+      gyr_cov: 0.3
+      b_acc_cov: 0.0001
+      b_gyr_cov: 0.0001
+
+    lio:
+      max_iterations: 5
+      dept_err: 0.02
+      beam_err: 0.01
+      min_eigen_value: 0.0025
+      voxel_size: 0.5
+      max_layer: 2
+      max_points_num: 50
+      layer_init_num: [5, 5, 5, 5, 5]
+
+    local_map:
+      # 2026-08-02: fastlivo RSS가 ~9MB/s로 계속 증가하는 문제가 있는데,
+      # map_sliding_en: true로도 안 잡혔음(정지 상태 실측 동일). 맵 축적이
+      # 아니라 다른 누수로 보임 -- 장시간 주행 전 원인 조사 필요.
+      map_sliding_en: false
+      half_map_size: 100
+      sliding_thresh: 8.0
+
+    uav:
+      imu_rate_odom: false
+      gravity_align_en: false
+
+    publish:
+      dense_map_en: true
+      pub_effect_point_en: false
+      pub_plane_en: false
+      pub_scan_num: 1
+      blind_rgb_points: 0.0
+
+    evo:
+      seq_name: "meridian_run"
+      pose_output_en: false
+
+    pcd_save:
+      pcd_save_en: false
+      type: 0
+      colmap_output_en: false
+      filter_size_pcd: 0.15
+      interval: -1
+
+    image_save:
+      img_save_en: false
+      interval: 1

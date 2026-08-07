@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="outdoor_manipulator">
+
+  <!-- Include both base and arm -->
+  <xacro:include filename="$(find bunker_description)/urdf/bunker.urdf.xacro"/>
+  <xacro:include filename="$(find bunker_description)/urdf/kr1018.urdf.xacro"/>
+  <xacro:include filename="$(find realsense2_description)/urdf/_d455.urdf.xacro"/>
+  <xacro:include filename="$(find realsense2_description)/urdf/_d405.urdf.xacro"/>
+
+  <!-- Add a fixed joint connecting base to arm -->
+  <joint name="base_to_arm" type="fixed">
+    <parent link="base_link"/>
+    <child link="arm_link"/>
+    <origin xyz="0.3 0 0" rpy="0 0 0"/> <!-- Adjust as needed -->
+  </joint>
+
+  <xacro:sensor_d455 parent="base_link" name="cam1" use_nominal_extrinsics="false">
+    <origin xyz="0.4 0.1 0.01" rpy="0 0 0"/>
+  </xacro:sensor_d455>
+
+  <xacro:sensor_d405 parent="kr_link_7" name="cam2" use_nominal_extrinsics="false">
+    <origin xyz="-0.1 0 0" rpy="0 -1.57 0"/>
+  </xacro:sensor_d405>
+
+</robot>
