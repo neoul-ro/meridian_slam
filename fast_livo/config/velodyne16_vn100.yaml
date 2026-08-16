@@ -1,41 +1,100 @@
 /**:
   ros__parameters:
     common:
-      img_topic: "/camera/camera/color/image_raw"
+      # 30 Hz 원본이 아니라 10 Hz 로 솎은 스트림을 쓴다. 카메라는 30 Hz 그대로
+      # 발행되고 다른 소비자도 영향받지 않는다 -- camera.launch.py 의
+      # camera_slam_throttle 참고. 이유: 카메라가 라이다보다 빠르면
+      # sync_packages 가 스윕을 방위각 쐐기로 잘라 LIO 갱신을 망가뜨린다.
+      img_topic: "/camera/camera/color/image_slam"
       lid_topic: "/velodyne_points"
       imu_topic: "/vectornav/imu"
-      img_en: 1
+      img_en: 1    # VIO on.
       lidar_en: 1
       ros_driver_bug_fix: false
 
     extrin_calib:
-      # LiDAR -> IMU extrinsic (VLP-16 origin expressed in VN-100 frame).
-      # From bunker URDF mounts, assuming the VN-100 sits at the chassis
-      # origin (imu_link TF): velodyne is at (0.240, 0, 0.0943) in chassis.
-      # TODO(calibration): refine once the real IMU mount is measured.
-      extrinsic_T: [0.240, 0.0, 0.0943]
-      extrinsic_R: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
-      # LiDAR -> camera extrinsic (p_cam = Rcl * p_lidar + Pcl).
-      # Rcl: D435 optical z-forward vs VLP-16 x-forward (both face +x).
-      # Pcl from URDF mounts: camera_link is (0.1506, 0.0175, 0.0553) from
-      # velodyne in chassis coords -> Pcl = -Rcl * t = [0.0175, 0.0553, -0.1506].
-      # TODO(calibration): refine with camera-LiDAR calibration (color optical
-      # origin is a few mm from camera_link).
-      Rcl: [0.0, -1.0, 0.0,
-            0.0, 0.0, -1.0,
-            1.0, 0.0, 0.0]
-      Pcl: [0.0175, 0.0553, -0.1506]
+      # 2026-08-12: BOTH extrinsics below are now measured. Nothing here is a
+      # tape measurement or an assumed right angle any more.
+      #
+      # LiDAR -> camera (Rcl/Pcl) was measured directly with the ankitdhall
+      # lidar_camera_calibration method (Dhall et al., arXiv:1705.09785):
+      # two 36.2 cm planar boards hung as diamonds at 1.30/1.35 m, each with a
+      # 20.5 cm ArUco marker. The camera side gets the board corners from the
+      # marker pose + measured board geometry; the LiDAR side gets them from a
+      # RANSAC plane fit; a Kabsch/SVD solve on the 8 corner pairs gives the
+      # rigid transform. RMSE 1.11 cm, in line with the paper's stated 1-4 cm.
+      #
+      # LiDAR -> IMU (extrinsic_R/T) is then derived by closing the triangle
+      # with the Kalibr Camera-IMU result (calib/cam_imu-camchain-imucam.yaml,
+      # reprojection 0.186 px):
+      #     extrinsic_R = R_cam_imu^-1 * Rcl
+      #     extrinsic_T = R_cam_imu^-1 * (Pcl - T_cam_imu)
+      # It therefore inherits the error of both, and is the least accurate of
+      # the three edges. Measuring it directly is not possible on this rig:
+      # LI-Init and friends need excitation about all six axes and the Bunker
+      # is a planar-motion ground robot.
+      #
+      # VALIDATION (independent of the fit). Transform the LiDAR board points
+      # into each marker's own frame; they must land ON the marker plane and
+      # span the physically measured extent (x,z = -12.4..+23.9 cm):
+      #                    out-of-plane      x span         z span
+      #   previous value    +11.7 cm     -11.0..+26.0   -8.0..+28.8
+      #   this value        -0.2 cm      -13.5..+23.5   -13.5..+24.0
+      # A 60x improvement in the out-of-plane residual.
+      #
+      # CAVEATS, in order of how much they should bother you:
+      #  - one static scene, two boards = 8 point correspondences. The paper
+      #    recommends several scenes. Two or three more 20 s recordings with
+      #    the boards re-angled would firm this up considerably.
+      #  - the fitted board squares came out 37.0 and 38.3 cm against a true
+      #    36.2, so corner extraction carries ~1-2 cm of error.
+      #  - extrinsic_T disagrees with the old tape value by 12 cm in y. The
+      #    LiDAR-IMU *distance* agrees to 2 mm (31.3 vs 31.5 cm) -- only the
+      #    direction differs, by 23 deg. That pattern says the tape got the
+      #    LiDAR's left-right position wrong (frames.yaml has it on the
+      #    "front-LEFT vent, not centered"), but it is worth eyeballing the
+      #    actual mounting to confirm which is right.
+      #
+      # For reference, the superseded values were:
+      #   extrinsic_T [-0.276, -0.151, 0.0377]     (tape, from frames.yaml)
+      #   extrinsic_R identity-with-90deg-yaw      (assumed, not measured)
+      #   Rcl/Pcl     composed from R_cam_imu * the above
+      #
+      # LiDAR -> IMU (p_imu = extrinsic_R * p_lidar + extrinsic_T).
+      # Euler: roll -1.89 deg, pitch -0.54 deg, yaw +90.66 deg. The ~90 deg yaw
+      # is a convention difference, not a physical rotation: the vectornav
+      # driver runs use_enu=true so /vectornav/imu is RFU (x=right, y=forward)
+      # while the VLP-16 scan frame is FLU (x=forward, y=left). What the
+      # calibration adds on top is the 0.66 deg yaw / 1.89 deg roll / 0.54 deg
+      # pitch of real mounting misalignment, which no ruler can see.
+      extrinsic_T: [-0.311851, -0.031027, 0.033057]
+      extrinsic_R: [-0.011537766, -0.999392118, -0.032897939,
+                     0.999889510, -0.011222630, -0.009747829,
+                     0.009372703, -0.033006772,  0.999411179]
+      # LiDAR -> camera (p_cam = Rcl * p_lidar + Pcl). Measured, see above.
+      Rcl: [-0.033150230, -0.999023590, -0.029205090,
+            -0.012414520,  0.029630490, -0.999483820,
+             0.999373270, -0.032770550, -0.013384660]
+      Pcl: [-0.270345600,  0.008551620, -0.053679170]
 
     time_offset:
       # All three sensors are separate devices without hardware sync.
       # Tune these offsets if pointcloud/image lag behind IMU time.
       lidar_time_offset: 0.0
       imu_time_offset: 0.0
-      img_time_offset: 0.0
+      # Measured by Kalibr 2026-08-10 (timeshift_cam_imu). Kalibr's convention is
+      # t_imu = t_cam + shift, and LIVMapper.cpp:361 does
+      # msg_header_time = stamp + img_time_offset, so the value goes in as-is.
+      # 8.3 ms, much smaller than the 30-100 ms I had assumed from
+      # global_time_enabled being False.
+      img_time_offset: 0.008346290578647407
       exposure_time_init: 0.0
 
     preprocess:
-      point_filter_num: 2
+      # 2 -> 1. Keeps every point instead of every other one. Costs CPU
+      # (fastlivo 87 % of one core, effectively single-threaded) and is the
+      # weakest of the three non-default values below -- it was never isolated.
+      point_filter_num: 1
       filter_size_surf: 0.1
       lidar_type: 2 # 2 = VELO16 (sensor_msgs/PointCloud2 from velodyne_pointcloud)
       scan_line: 16
@@ -43,8 +102,21 @@
 
     vio:
       max_iterations: 5
-      outlier_threshold: 1000
-      img_point_cov: 100
+      # Both differ from upstream. Chosen 2026-08-15 by a stationary sweep, then
+      # RE-VALIDATED after the camera rate fix -- they are not leftovers.
+      #
+      # img_point_cov is the assumed image measurement noise: larger means the
+      # visual update moves the state less. IT IS COUPLED TO imu.acc_cov/gyr_cov.
+      # A/B, same code, same rate fix, 5 min stationary each:
+      #   img_point_cov 1000 -> roll 0.036 deg, drift   3.8 mm
+      #   img_point_cov  100 -> roll 69.5 deg,  drift 145 km   (diverges)
+      # Trusting both an accurate IMU and the camera leaves no slack for
+      # unmodelled error. Do not lower this without raising the IMU covariances.
+      #
+      # outlier_threshold 1000 -> 100 (= upstream default) tightens the
+      # photometric outlier test at vio.cpp:764. Not isolated on its own.
+      outlier_threshold: 100
+      img_point_cov: 1000
       patch_size: 8
       patch_pyrimid_level: 3
       normal_en: true
@@ -56,9 +128,30 @@
     imu:
       imu_en: true
       imu_int_frame: 30
-      # VN-100S noise density is low; start from NTU-VIRAL (VN-100) values.
-      acc_cov: 0.5
-      gyr_cov: 0.3
+      # Allan 24h measured values (n^2 * rate). These used to diverge in ~20 s and
+      # the comment here used to say "keep 0.5 / 0.3". That is no longer true.
+      #
+      # 2026-08-15: the real cause was the camera:LiDAR rate ratio, not these.
+      # At 30 Hz camera against a 10 Hz spinning LiDAR, sync_packages cut every
+      # sweep into 120-degree azimuth wedges and half the LIO updates ran on an
+      # empty slice -- so the LiDAR constraint was too weak to carry accurate IMU
+      # covariances. Feeding SLAM a 10 Hz image stream fixed that (see
+      # common.img_topic and camera.launch.py:camera_slam_throttle), and these
+      # measured values then hold: 5 min stationary gives roll 0.036 deg,
+      # position drift 3.8 mm.
+      #
+      # THEY ARE COUPLED TO vio.img_point_cov. Measured A/B, same code, same
+      # rate fix, 5 min stationary each:
+      #   img_point_cov 1000 -> roll 0.036 deg, drift   3.8 mm
+      #   img_point_cov  100 -> roll 69.5 deg,  drift 145 km   (diverges)
+      # Trusting both the IMU and the camera leaves no slack for unmodelled
+      # error. If you lower img_point_cov, raise these back first.
+      acc_cov: 0.00036067670501
+      gyr_cov: 0.00000059232569853
+      # DEAD PARAMETERS -- kept only so the file matches upstream. The bias
+      # covariance lines are commented out in IMU_Processing.cpp:202-206, and
+      # LIVMapper.cpp:235-236 hardcodes V3D(0.0001, ...) rather than reading
+      # these. Changing them has no effect.
       b_acc_cov: 0.0001
       b_gyr_cov: 0.0001
 
@@ -73,9 +166,71 @@
       layer_init_num: [5, 5, 5, 5, 5]
 
     local_map:
-      # 2026-08-02: fastlivo RSS가 ~9MB/s로 계속 증가하는 문제가 있는데,
-      # map_sliding_en: true로도 안 잡혔음(정지 상태 실측 동일). 맵 축적이
-      # 아니라 다른 누수로 보임 -- 장시간 주행 전 원인 조사 필요.
+      # KNOWN ISSUE with VIO on -- memory grows. Profiled 2026-08-11.
+      # Re-measured 2026-08-15 after the rate fix: 5.1 MB/s (was 10 MB/s).
+      # Halved because SLAM now ingests 10 Hz of images instead of 30 Hz.
+      # Still unbounded. Restart every 20-30 min for long runs.
+      #
+      # Short version: keeping reference images is normal and necessary for a
+      # direct/photometric VIO -- warpAffine (vio.cpp:742) re-samples patches
+      # out of the reference frame, so an 8x8 patch alone would not do. What is
+      # NOT normal is that the number of retained frames never stops growing.
+      # FAST-LIVO2 bounds it by pruning a point's observations down to the
+      # reference patch once the point converges (deleteNonRefPatchFeatures,
+      # called from updateVisualMapPoints when is_converged_).
+      #
+      # ON THIS RIG THAT BOUND NEVER ENGAGES. Counting every point in feat_map
+      # each frame:
+      #
+      #   points     529 -> 10949 -> 21788 -> 26586   (grows without bound)
+      #   converged    0 ->   158 ->   243 ->   275   (1.0 %)
+      #   obs_avg    1.1 ->   1.2 ->   1.2 ->   1.2
+      #
+      # Convergence needs `normal_update < 0.0001 && obs_.size() > 10` against a
+      # plane from the LiDAR voxel map (vio.cpp:1036). A 16-ring VLP-16 fits
+      # those planes from very few points, so the normal estimate keeps moving
+      # and 99 % of points never converge. FAST-LIVO2 was developed on Livox
+      # (non-repetitive, dense) and 64-line Ouster, where they do. This is a
+      # sensor mismatch, not a coding error -- upstream hku-mars/FAST-LIVO2 has
+      # identical code here.
+      #
+      # Consequence, measured with heaptrack over a 60 s window while the pose
+      # was still stable (536 MB total):
+      #   412 MB (77%)  cv::cvtColorBGR2Gray from processFrame (vio.cpp:1813)
+      #                 1042 calls x 396 KB -- one 848x480 grayscale frame per
+      #                 VIO frame, none released. Feature::img_ (feature.h:30)
+      #                 holds the whole refcounted cv::Mat, so one unpruned
+      #                 Feature pins its entire source frame.
+      #    84 MB (16%)  VisualPoint/Feature/patch at vio.cpp:875-881
+      #
+      # Separately, once the pose diverges the LiDAR voxel map explodes too --
+      # VoxelOctoTree::UpdateOctoTree becomes the top allocator. Standing still
+      # with acc_cov 0.5 / gyr_cov 0.3:
+      #   t=0-120 s  pose 0.02-0.09 m   RSS +10 MB/s   (the leak above)
+      #   t=220 s    pose 59847 m       RSS +43 MB/s   (voxel map on top)
+      # That second part is a SYMPTOM of divergence, not a cause. Do not chase
+      # it; I nearly did.
+      #
+      # Divergence onset tracks the IMU covariance: 0.5/0.3 -> ~140 s, the
+      # measured 3.6e-4/5.9e-7 -> ~20 s. The measured pair is much better for
+      # LIO (3.7-7.9x less attitude jitter) but leaves no slack for the still
+      # unmodelled camera extrinsic error. Tuned for LIO, which is what runs.
+      #
+      # If VIO is wanted, in rough order of effort:
+      #   - make points converge: relax the normal_update threshold, or feed
+      #     the plane fit more points (this is the root cause on a VLP-16)
+      #   - cap or age out feat_map, which currently has no runtime removal path
+      #     at all (DeleteKeyList at vio.cpp:596 only erases from the per-frame
+      #     sub_feat_map)
+      #   - store a patch-sized ROI in Feature::img_ instead of the whole frame
+      #     (fights the design, but cuts 77 % of the growth)
+      #
+      # Already ruled out, do not re-investigate: dense_map_en, map_sliding_en,
+      # pcd_save_en (bisected, no effect), warp_map (only filled in the
+      # normal_en==false branch), pcl_wait_save (guarded by pcd_save_en).
+      #
+      # Fixed along the way: updateVisualMapPoints leaked patch_temp when
+      # add_flag was false -- an upstream bug, but a minor term here.
       map_sliding_en: false
       half_map_size: 100
       sliding_thresh: 8.0
