@@ -1,9 +1,13 @@
 """Relay FAST-LIVO2 odometry to the TF tree required by the platform.
 
-FAST-LIVO2 publishes /aft_mapped_to_init (camera_init -> aft_mapped, the IMU
-body frame). The platform TF tree wants map -> base_link, with map identical
-to camera_init. This node applies the fixed base_link->imu_link mount offset
-and broadcasts map -> base_link.
+FAST-LIVO2 publishes /aft_mapped_to_init (map -> aft_mapped, the IMU body
+frame). The platform TF tree wants map -> base_link. This node applies the
+fixed base_link->imu_link mount offset and broadcasts map -> base_link.
+
+It also publishes that same pose on /pose, which is the topic the Meridian
+pipeline consumes. FAST-LIVO2 used to publish /pose itself, but it only knows
+the IMU frame -- the base_link offset lives here and in the URDF, so the two
+would have had to be kept in step by hand.
 """
 
 import math
@@ -11,7 +15,7 @@ import math
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import TransformStamped
+from geometry_msgs.msg import PoseStamped, TransformStamped
 from tf2_ros import TransformBroadcaster
 
 
@@ -54,6 +58,7 @@ class OdomTfRelay(Node):
         self.declare_parameter('odom_topic', '/aft_mapped_to_init')
         self.declare_parameter('map_frame', 'map')
         self.declare_parameter('base_frame', 'base_link')
+        self.declare_parameter('pose_topic', '/pose')
         # Pose of imu_link expressed in base_link (must match the static
         # base_link -> chassis -> imu_link chain published by bringup).
         self.declare_parameter('imu_in_base_xyz', [0.0, 0.0, 0.0])
@@ -71,10 +76,13 @@ class OdomTfRelay(Node):
         self.t_ib = (-tx, -ty, -tz)
 
         self.tf_broadcaster = TransformBroadcaster(self)
+        pose_topic = self.get_parameter('pose_topic').value
+        self.pose_pub = self.create_publisher(PoseStamped, pose_topic, 10)
         topic = self.get_parameter('odom_topic').value
         self.sub = self.create_subscription(Odometry, topic, self.on_odom, 10)
         self.get_logger().info(
-            f'Relaying {topic} -> TF {self.map_frame} -> {self.base_frame}')
+            f'Relaying {topic} -> TF {self.map_frame} -> {self.base_frame}'
+            f' and -> {pose_topic}')
 
     def on_odom(self, msg: Odometry):
         p = msg.pose.pose.position
@@ -96,6 +104,17 @@ class OdomTfRelay(Node):
         tf.transform.rotation.z = q_mb[2]
         tf.transform.rotation.w = q_mb[3]
         self.tf_broadcaster.sendTransform(tf)
+
+        # Same pose, as a topic. The stamp is carried through from the odometry
+        # unchanged: it is the LIO measurement time, and consumers pair this
+        # pose with the camera frame it belongs to.
+        pose = PoseStamped()
+        pose.header = tf.header
+        pose.pose.position.x = tf.transform.translation.x
+        pose.pose.position.y = tf.transform.translation.y
+        pose.pose.position.z = tf.transform.translation.z
+        pose.pose.orientation = tf.transform.rotation
+        self.pose_pub.publish(pose)
 
 
 def main(args=None):

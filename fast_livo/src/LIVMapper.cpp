@@ -343,12 +343,13 @@ void LIVMapper::initializeSubscribersAndPublishers(rclcpp::Node::SharedPtr &node
   pubLaserCloudDyn = this->node->create_publisher<sensor_msgs::msg::PointCloud2>("/dyn_obj", 100);
   pubLaserCloudDynRmed = this->node->create_publisher<sensor_msgs::msg::PointCloud2>("/dyn_obj_removed", 100);
   pubLaserCloudDynDbg = this->node->create_publisher<sensor_msgs::msg::PointCloud2>("/dyn_obj_dbg_hist", 100);
-  // Renamed from /mavros/vision_pose/pose. Upstream fed a flight controller,
-  // which wants the body (IMU) pose; the Meridian pipeline wants the camera
-  // pose, and nothing on this rig consumes the body pose from here -- the TF
-  // tree takes it from /aft_mapped_to_init instead. So /pose carries
-  // world_T_camera. See publish_mavros.
-  mavros_pose_publisher = this->node->create_publisher<geometry_msgs::msg::PoseStamped>("/pose", 10);
+  // /pose used to be published here (upstream's /mavros/vision_pose/pose, the
+  // body pose a flight controller wants). The Meridian pipeline wants the pose
+  // of base_link, and base_link is not a frame this node knows: the mount
+  // offsets live in slam.launch.py and the URDF. meridian_slam_bringup's
+  // odom_tf_relay already applies them to build map->base_link, so it publishes
+  // /pose now and the geometry stays in one place. The body pose is still on
+  // /aft_mapped_to_init, which is what odom_tf_relay consumes.
   pubImage = it.advertise("/rgb_img", 1);
   pubImuPropOdom = this->node->create_publisher<nav_msgs::msg::Odometry>("/LIVO2/imu_propagate", 10000);
   imu_prop_timer = this->node->create_wall_timer(0.004s, std::bind(&LIVMapper::imu_prop_callback, this));
@@ -628,7 +629,6 @@ void LIVMapper::handleLIO()
   if (pub_effect_point_en) publish_effect_world(pubLaserCloudEffect, voxelmap_manager->ptpl_list_);
   if (voxelmap_manager->config_setting_.is_pub_plane_map_) voxelmap_manager->pubVoxelMap();
   publish_path(pubPath);
-  publish_mavros(mavros_pose_publisher);
 
   frame_num++;
   aver_time_consu = aver_time_consu * (frame_num - 1) / frame_num + (t4 - t0) / frame_num;
@@ -1512,7 +1512,13 @@ void LIVMapper::publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry
 {
   odomAftMapped.header.frame_id = "map";
   odomAftMapped.child_frame_id = "aft_mapped";
-  odomAftMapped.header.stamp = this->node->get_clock()->now(); //.ros::Time()fromSec(last_timestamp_lidar);
+  // The measurement time, not the publish time. This stamp reaches consumers
+  // twice over: odom_tf_relay copies it onto map->base_link and onto /pose.
+  // get_clock()->now() here is the moment the LIO update finished, a median
+  // 36.6 ms after the sweep the state belongs to (measured over 1116 poses in
+  // 20260823_180259) -- enough that a consumer pairing poses to camera frames
+  // within a few ms matches almost nothing.
+  odomAftMapped.header.stamp = sec2Stamp(LidarMeasures.last_lio_update_time);
   set_posestamp(odomAftMapped.pose.pose);
 
   static std::shared_ptr<tf2_ros::TransformBroadcaster> br;
@@ -1529,49 +1535,10 @@ void LIVMapper::publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry
   pubOdomAftMapped->publish(odomAftMapped);
 }
 
-// world_T_camera, stamped with the measurement time.
-//
-// The ESIKF state is the IMU pose: pointBodyToWorld sends a LiDAR point through
-// extR/extT into the IMU frame before rot_end/pos_end take it to the world. The
-// Meridian pipeline back-projects depth into the camera optical frame and then
-// applies this pose, so the body pose is the wrong one -- on this rig the two
-// differ by 90.18 deg of rotation and 6.1 cm, because the vectornav publishes
-// RFU. VIOManager already composes the camera extrinsic, so this reuses Rci/Pci
-// (camera <- IMU, built from Rcl/Pcl and extrinsic_R/T in initializeVIO) rather
-// than deriving the same chain a second time.
-//
-// Derived from _state rather than read off VIOManager::Rcw/Pcw on purpose:
-// those are only refreshed while the VIO runs, and this has to stay correct
-// with img_en 0. initializeVIO is called unconditionally, so Rci/Pci are set
-// either way.
-void LIVMapper::publish_mavros(const rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr &mavros_pose_publisher)
-{
-  const M3D Rwc = _state.rot_end * vio_manager->Rci.transpose();
-  const V3D Pwc = _state.pos_end - Rwc * vio_manager->Pci;
-  const Eigen::Quaterniond q_wc(Rwc);
-
-  geometry_msgs::msg::PoseStamped msg_camera_pose;
-  // The measurement time, not the publish time. Consumers pair this pose with
-  // the image frame it belongs to; get_clock()->now() is the moment the LIO
-  // update finished, which trails the sweep by a median 36.6 ms (measured over
-  // 20260823_180259). Against geobuilder's 2 ms sync tolerance only 14 % of
-  // frames matched, and the rest silently fell back to an identity pose.
-  msg_camera_pose.header.stamp = sec2Stamp(LidarMeasures.last_lio_update_time);
-  msg_camera_pose.header.frame_id = "map";
-  msg_camera_pose.pose.position.x = Pwc(0);
-  msg_camera_pose.pose.position.y = Pwc(1);
-  msg_camera_pose.pose.position.z = Pwc(2);
-  msg_camera_pose.pose.orientation.x = q_wc.x();
-  msg_camera_pose.pose.orientation.y = q_wc.y();
-  msg_camera_pose.pose.orientation.z = q_wc.z();
-  msg_camera_pose.pose.orientation.w = q_wc.w();
-  mavros_pose_publisher->publish(msg_camera_pose);
-}
-
 void LIVMapper::publish_path(const rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr &pubPath)
 {
   set_posestamp(msg_body_pose.pose);
-  msg_body_pose.header.stamp = this->node->get_clock()->now();
+  msg_body_pose.header.stamp = sec2Stamp(LidarMeasures.last_lio_update_time);
   msg_body_pose.header.frame_id = "map";
   path.poses.push_back(msg_body_pose);
   pubPath->publish(path);
