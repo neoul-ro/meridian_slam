@@ -2,9 +2,28 @@
   ros__parameters:
     camera:
       model: Pinhole
-      # Intel RealSense D435 color stream, measured with Kalibr (2026-08-10).
-      # Source: calib/cam_intrinsic2-camchain.yaml (pinhole-radtan, 1637/1879
-      # frames detected, reprojection error 0.238/0.221 px).
+      # Intel RealSense D435 color stream at 640x480.
+      #
+      # !! PROVISIONAL. Not measured at this resolution -- carried over from the
+      # !! 848x480 Kalibr fit by the crop relation below, and due to be refitted.
+      #
+      # The stream moved from 848x480 to 640x480 on 2026-08-26 so that
+      # meridian_seg's letterbox lands on 256x192 (see camera.launch.py). Both
+      # modes are 480 tall, so the 4:3 one is the 16:9 one cropped horizontally
+      # by (848 - 640) / 2 = 104 px a side: fx, fy and cy carry over untouched
+      # and cx moves by -104. The distortion coefficients are in normalised
+      # image coordinates, so a crop does not touch them either.
+      #
+      # Sanity check on the carry-over: the Kalibr fit put cx 7.53 px right of
+      # the image centre (431.53 vs 424). After the crop it is 327.53 vs 320 --
+      # the same 7.53 px. Consistent, but consistency is not a measurement:
+      # whether librealsense really produces 640x480 as a pure crop of 848x480
+      # on this unit is the assumption, and it has not been checked against the
+      # driver's own camera_info at this profile.
+      #
+      # Measured values it came from: Kalibr 2026-08-10, pinhole-radtan,
+      # calib/cam_intrinsic2-camchain.yaml, 1637/1879 frames detected,
+      # reprojection error 0.238/0.221 px, at 848x480.
       #
       # d0..d3 are OpenCV order (k1, k2, p1, p2) -- see pinhole_camera.cpp:34 --
       # which matches Kalibr's radtan ordering 1:1.
@@ -15,12 +34,12 @@
       # k2 -0.237, which is several pixels near the image border. cy is also
       # 6.4 px off factory -- two independent recordings agreed on 238.9 to
       # within 0.1 px, so that offset is real.
-      width: 848
+      width: 640
       height: 480
       scale: 1.0
       fx: 605.6431395442901
       fy: 604.857587153714
-      cx: 431.53130932256033
+      cx: 327.53130932256033   # 431.53130932256033 - 104 (crop), PROVISIONAL
       cy: 238.96893044451534
       # Caveat worth knowing: vikit only switches on its distortion path when
       # d0 != 0 (pinhole_camera.cpp:26), fast_livo's VIO never undistorts the
