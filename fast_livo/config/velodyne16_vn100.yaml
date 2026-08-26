@@ -128,17 +128,33 @@
     imu:
       imu_en: true
       imu_int_frame: 30
-      # Allan 24h measured values (n^2 * rate). These used to diverge in ~20 s and
-      # the comment here used to say "keep 0.5 / 0.3". That is no longer true.
+      # Allan 24 h measured values (n^2 * rate) were
+      #   acc_cov 0.00036067670501   gyr_cov 0.00000059232569853
+      # They are correct AS SENSOR NOISE. They are not usable as filter tuning
+      # on this rig -- kept in this comment so the measurement is not lost.
       #
-      # 2026-08-15: the real cause was the camera:LiDAR rate ratio, not these.
-      # At 30 Hz camera against a 10 Hz spinning LiDAR, sync_packages cut every
-      # sweep into 120-degree azimuth wedges and half the LIO updates ran on an
-      # empty slice -- so the LiDAR constraint was too weak to carry accurate IMU
-      # covariances. Feeding SLAM a 10 Hz image stream fixed that (see
-      # common.img_topic and camera.launch.py:camera_slam_throttle), and these
-      # measured values then hold: 5 min stationary gives roll 0.036 deg,
-      # position drift 3.8 mm.
+      # 2026-08-15: the camera:LiDAR rate fix (30 Hz -> 10 Hz image stream, see
+      # common.img_topic and camera.launch.py:camera_slam_throttle) made the
+      # measured pair hold for 5 min STATIONARY -- roll 0.036 deg, drift 3.8 mm.
+      #
+      # 2026-08-23: that validation was stationary-only and does NOT carry over
+      # to driving. Three runs with the measured pair, robot moving (gyro z std
+      # 0.29 rad/s, peak 1.04 rad/s):
+      #   bag 20260823_164809  already 95 m out when recording started -> 2.1 km
+      #   bag 20260823_170455  0.006 m -> 9 m at 19 s -> 2.7 km at 103 s
+      #   live 17:00 run       -> 38 km, RSS 10 GB and climbing
+      # In all three /cloud_registered kept only 27-36 % of the sweep, so the
+      # LiDAR had no strength left to pull the attitude back.
+      #
+      # Why it breaks under motion: the gyro BIAS covariance is hardcoded to
+      # 1e-4 (LIVMapper.cpp:235-236 -- see the dead b_gyr_cov below), so a
+      # measured gyr_cov of 5.9e-7 makes the bias random walk 170x LARGER than
+      # the measurement noise. Upstream 0.3 puts it 3000x the other way. With
+      # that ordering inverted the filter charges every attitude error to bias,
+      # and under rotation nothing bounds it. Reverted to upstream until either
+      # the bias covariance is fed the Allan random-walk value (2-line code
+      # change) or the LiDAR gate is opened (lio.dept_err / lio.beam_err, both
+      # tighter here than upstream).
       #
       # THEY ARE COUPLED TO vio.img_point_cov. Measured A/B, same code, same
       # rate fix, 5 min stationary each:
@@ -146,12 +162,67 @@
       #   img_point_cov  100 -> roll 69.5 deg,  drift 145 km   (diverges)
       # Trusting both the IMU and the camera leaves no slack for unmodelled
       # error. If you lower img_point_cov, raise these back first.
-      acc_cov: 0.00036067670501
-      gyr_cov: 0.00000059232569853
-      # DEAD PARAMETERS -- kept only so the file matches upstream. The bias
-      # covariance lines are commented out in IMU_Processing.cpp:202-206, and
-      # LIVMapper.cpp:235-236 hardcodes V3D(0.0001, ...) rather than reading
-      # these. Changing them has no effect.
+      #
+      # 2026-08-23 (later): LIVMapper.cpp now READS b_gyr_cov / b_acc_cov instead
+      # of hardcoding 1e-4, so the bias random walk can come from the same Allan
+      # run as the measurement noise. Same conversion both times, cov = n^2 * rate
+      # (rate = 100 Hz), because IMU_Processing.cpp adds cov * dt^2 where the
+      # correct increment is n^2 * dt:
+      #   gyr_cov   = (7.696269866190555e-05)^2 * 100   noise density
+      #   acc_cov   = (0.0018991490331489059)^2 * 100   noise density
+      #   b_gyr_cov = (3.0049216627512e-07)^2  * 100    random walk
+      #   b_acc_cov = (0.00016083566625242938)^2 * 100  random walk
+      # The hardcoded 1e-4 was 11,000,000x too large for the gyro bias and 39x
+      # too large for the accel bias. With these the ordering is right again:
+      # gyr_cov / b_gyr_cov = 65,600 (upstream 0.3 / 1e-4 = 3,000).
+      #
+      # CAVEAT: calib/imu.yaml flags gyroscope_random_walk as its least certain
+      # number (a ~1000 s thermal bump on gyro X). If b_gyr_cov is too small the
+      # filter treats the gyro bias as constant and cannot track real drift --
+      # that failure is slow error growth, not the fast runaway seen above.
+      #
+      #
+      # 2026-08-23 (result): the Allan set was TRIED and REVERTED. bag
+      # 20260823_173420, 91 s, same driving as the run below (gyro z std 0.279
+      # vs 0.271, peak 1.065 vs 1.052 rad/s):
+      #   first 45 s   tracked the good run almost exactly (25.9 m vs 25.2 m)
+      #   on the way back it sailed past the origin and kept going: -47.8 m at
+      #   91 s, z drifting monotonically 0 -> +2.6 -> -4.9 m on flat ground
+      # Not the fast runaway the 1e-4 hardcode gave (km in 30 s) -- a slow,
+      # steady slide instead, which is what too SMALL a bias covariance looks
+      # like: the filter holds the gyro bias near constant and cannot track its
+      # real drift. calib/imu.yaml already flags gyroscope_random_walk as its
+      # least certain number (~1000 s thermal bump on gyro X), and 9.03e-12
+      # was evidently past the useful end of that uncertainty.
+      #
+      # The true value is somewhere between 9e-12 and the 1e-4 hardcode; it was
+      # not searched. WHY the upstream pair works here is still not understood
+      # -- it is not that 0.5/0.3 are "correct" noise figures (they are ~1400x
+      # and ~500,000x the measured densities), only that the resulting slack
+      # absorbs unmodelled error this rig has and the measured pair does not.
+      #
+      # Back to the only config verified under driving: 93 s, 25 m out and
+      # back, 0.19 m closing error (bag 20260823_171157).
+      # Allan measurements, kept for whoever resumes this:
+      #   noise density   gyr 7.696269866190555e-05   acc 0.0018991490331489059
+      #   random walk     gyr 3.0049216627512e-07     acc 0.00016083566625242938
+      #   cov = n^2 * rate (100 Hz)  ->  5.9233e-07 / 3.6068e-04
+      #                                  9.0296e-12 / 2.5868e-06
+      # 2026-08-23 (trying): upstream author's own recommendation from
+      # hku-mars/FAST-LIVO2 issue #84, where a 2-storey car park lost height on
+      # the gravity axis. xuankuzcr's answer for "long-term and larger scale"
+      # was acc_cov 1.0 / gyr_cov 0.1 / voxel_size 1.0 (all three together).
+      # Note these are not measured noise either -- 2,800x and 170,000x our
+      # Allan densities. In this project they are a scene-scale knob, not a
+      # sensor property; issue #388 is someone hitting exactly our trap (same
+      # cov = n^2 * rate conversion, same runaway, same fix) and it is still
+      # unanswered, as is #323 asking what the cov units even are.
+      # REVERT to 0.5 / 0.3 / voxel_size 0.5 -- that is the pair verified under
+      # driving (bag 20260823_171157: 93 s, 25 m out and back, 0.19 m closing).
+      acc_cov: 1.0    # author rec. (upstream default 0.5)
+      gyr_cov: 0.1    # author rec. (upstream default 0.3)
+      # No longer dead -- LIVMapper.cpp:245-246 reads these now. 0.0001 is the
+      # value it used to hardcode, so this is the pre-existing behaviour.
       b_acc_cov: 0.0001
       b_gyr_cov: 0.0001
 
@@ -160,7 +231,7 @@
       dept_err: 0.02
       beam_err: 0.01
       min_eigen_value: 0.0025
-      voxel_size: 0.5
+      voxel_size: 1.0   # author rec. w/ acc_cov 1.0 / gyr_cov 0.1 (was 0.5)
       max_layer: 2
       max_points_num: 50
       layer_init_num: [5, 5, 5, 5, 5]
@@ -241,7 +312,13 @@
 
     publish:
       dense_map_en: true
-      pub_effect_point_en: false
+      # /cloud_effected = voxelmap_manager->ptpl_list_, the points that actually
+      # formed a plane correspondence and drove the state update (LIVMapper.cpp:623).
+      # This is the real LiDAR gate pass rate -- /cloud_registered is NOT it, that
+      # one is the camera-coloured subset (LIVMapper.cpp:1300-1324, ~19 % just from
+      # D435 69 deg FOV vs VLP-16 360 deg). Never measured on this rig; turned on
+      # 2026-08-23 to find out. Set false again if the extra 10 Hz cloud costs too much.
+      pub_effect_point_en: true
       pub_plane_en: false
       pub_scan_num: 1
       blind_rgb_points: 0.0

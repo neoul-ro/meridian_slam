@@ -79,6 +79,9 @@ public:
 
   double res_mean_last = 0.05;
   double gyr_cov = 0, acc_cov = 0, inv_expo_cov = 0;
+  // Upstream hardcoded the bias covariances at the call site; they are read
+  // from imu.b_gyr_cov / imu.b_acc_cov now. Defaults match the old constant.
+  double b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
   double blind_rgb_points = 0.0;
   double last_timestamp_lidar = -1.0, last_timestamp_imu = -1.0, last_timestamp_img = -1.0;
   double filter_size_surf_min = 0;

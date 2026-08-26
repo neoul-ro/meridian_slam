@@ -97,6 +97,8 @@ void LIVMapper::readParameters(rclcpp::Node::SharedPtr &node)
   try_declare.template operator()<bool>("evo.pose_output_en", false);
   try_declare.template operator()<double>("imu.gyr_cov", 1.0);
   try_declare.template operator()<double>("imu.acc_cov", 1.0);
+  try_declare.template operator()<double>("imu.b_gyr_cov", 0.0001);
+  try_declare.template operator()<double>("imu.b_acc_cov", 0.0001);
   try_declare.template operator()<int>("imu.imu_int_frame", 30);
   try_declare.template operator()<bool>("imu.imu_en", true);
   try_declare.template operator()<bool>("imu.gravity_est_en", true);
@@ -160,6 +162,8 @@ void LIVMapper::readParameters(rclcpp::Node::SharedPtr &node)
   this->node->get_parameter("evo.pose_output_en", pose_output_en);
   this->node->get_parameter("imu.gyr_cov", gyr_cov);
   this->node->get_parameter("imu.acc_cov", acc_cov);
+  this->node->get_parameter("imu.b_gyr_cov", b_gyr_cov);
+  this->node->get_parameter("imu.b_acc_cov", b_acc_cov);
   this->node->get_parameter("imu.imu_int_frame", imu_int_frame);
   this->node->get_parameter("imu.imu_en", imu_en);
   this->node->get_parameter("imu.gravity_est_en", gravity_est_en);
@@ -232,8 +236,14 @@ void LIVMapper::initializeComponents(rclcpp::Node::SharedPtr &node)
   p_imu->set_gyr_cov_scale(V3D(gyr_cov, gyr_cov, gyr_cov));
   p_imu->set_acc_cov_scale(V3D(acc_cov, acc_cov, acc_cov));
   p_imu->set_inv_expo_cov(inv_expo_cov);
-  p_imu->set_gyr_bias_cov(V3D(0.0001, 0.0001, 0.0001));
-  p_imu->set_acc_bias_cov(V3D(0.0001, 0.0001, 0.0001));
+  // Upstream hardcoded 0.0001 here and never read imu.b_gyr_cov / imu.b_acc_cov,
+  // which pinned the bias random walk regardless of the measurement covariances.
+  // With Allan-measured gyr_cov (5.9e-7) that left the bias noise 169x LARGER
+  // than the measurement noise -- inverted from upstream's 3000x the other way --
+  // so the filter charged every attitude error to gyro bias and ran away under
+  // rotation. Reading the yaml lets both come from the same Allan measurement.
+  p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
+  p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
   p_imu->set_imu_init_frame_num(imu_int_frame);
 
   if (!imu_en) p_imu->disable_imu();
