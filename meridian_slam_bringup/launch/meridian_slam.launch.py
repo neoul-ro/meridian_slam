@@ -4,7 +4,7 @@
     camera.launch.py    D435 driver            (use_camera, meridian_sensor pkg)
     imu.launch.py       VN-100 driver, 100Hz   (use_imu,    meridian_sensor pkg)
     slam.launch.py      FAST-LIVO2 + TF tree   (use_slam)
-    foxglove.launch.py  Foxglove bridge :8765  (use_foxglove)
+    foxglove.launch.py  Foxglove bridge :8765  (use_foxglove, off by default)
 
 Each component can also be launched on its own with the same files.
 Driver launches live in the meridian_sensor package (separate repo).
@@ -39,7 +39,11 @@ def generate_launch_description():
         DeclareLaunchArgument('use_camera', default_value='true'),
         DeclareLaunchArgument('use_imu', default_value='true'),
         DeclareLaunchArgument('use_slam', default_value='true'),
-        DeclareLaunchArgument('use_foxglove', default_value='true'),
+        # Off by default. This file is the whole-rig convenience launch, but
+        # the pieces it composes are also what other bringups compose around,
+        # and a second foxglove_bridge just loses the race for 8765. Ask for
+        # it with use_foxglove:=true, or run foxglove.launch.py on its own.
+        DeclareLaunchArgument('use_foxglove', default_value='false'),
         DeclareLaunchArgument('use_rviz', default_value='false'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('use_robot_description', default_value='true'),
