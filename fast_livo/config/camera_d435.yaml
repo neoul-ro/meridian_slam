@@ -2,17 +2,36 @@
   ros__parameters:
     camera:
       model: Pinhole
-      # Intel RealSense D435 color stream, factory calibration.
-      # Extracted from /camera/camera/color/camera_info in
-      # ~/rosbags/rosbag2_2026_07_25-20_20_30 (848x480, plumb_bob, zero distortion).
+      # Intel RealSense D435 color stream, measured with Kalibr (2026-08-10).
+      # Source: calib/cam_intrinsic2-camchain.yaml (pinhole-radtan, 1637/1879
+      # frames detected, reprojection error 0.238/0.221 px).
+      #
+      # d0..d3 are OpenCV order (k1, k2, p1, p2) -- see pinhole_camera.cpp:34 --
+      # which matches Kalibr's radtan ordering 1:1.
+      #
+      # The factory values reported on /camera/camera/color/camera_info were
+      # fx 607.64, fy 606.79, cx 431.23, cy 245.33 with zero distortion. The
+      # firmware claims no distortion, but the lens really has k1 +0.108 /
+      # k2 -0.237, which is several pixels near the image border. cy is also
+      # 6.4 px off factory -- two independent recordings agreed on 238.9 to
+      # within 0.1 px, so that offset is real.
       width: 848
       height: 480
       scale: 1.0
-      fx: 607.6361083984375
-      fy: 606.7900390625
-      cx: 431.2283630371094
-      cy: 245.33114624023438
-      d0: 0.0
-      d1: 0.0
-      d2: 0.0
-      d3: 0.0
+      fx: 605.6431395442901
+      fy: 604.857587153714
+      cx: 431.53130932256033
+      cy: 238.96893044451534
+      # Caveat worth knowing: vikit only switches on its distortion path when
+      # d0 != 0 (pinhole_camera.cpp:26), fast_livo's VIO never undistorts the
+      # image for the pinhole model (vio.cpp:1778 is commented out), and
+      # computeProjectionJacobian (vio.cpp:190) is hardcoded to the plain
+      # pinhole form. Measurement and Jacobian therefore use slightly different
+      # models once these are non-zero. A 2026-08-10 A/B run looked like this
+      # caused a pose blow-up, but that run was confounded -- the real cause was
+      # CPU starvation dropping the LiDAR to 5.6 Hz. Re-test on an unloaded
+      # machine before blaming these numbers.
+      d0: 0.1075688915368883
+      d1: -0.23684972414089894
+      d2: -0.003872857813206929
+      d3: 0.000001269926469583267

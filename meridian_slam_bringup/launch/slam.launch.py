@@ -10,10 +10,11 @@ as its world frame; the legacy camera_init frame no longer exists):
                  |   +- velodyne
                  +- camera_link             (URDF, mount offset)
                  |   +- <optical * N>       (published by realsense2_camera)
-                 +- imu_link                (static, TODO: real IMU mount)
+                 +- imu_link                (static, measured mount, RFU axes)
                  +- wheel * 16              (URDF)
 """
 
+import math
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -86,10 +87,14 @@ def generate_launch_description():
     ]
 
     # Frames the URDF does not provide (IMU mount).
-    # imu_link sits at the chassis origin until the VN-100 mount is measured —
-    # keep odom_tf_relay's imu_in_base_* consistent with this.
+    # Measured mount from bunker_tf/config/frames.yaml: 15cm back from the front
+    # edge, sitting on the top plate, 10cm directly below the camera. The yaw is
+    # -90deg because imu_link is RFU (the vectornav driver defaults to
+    # use_enu=true), not the ROS-standard FLU — see extrinsic_R in
+    # velodyne16_vn100.yaml. Keep odom_tf_relay's imu_in_base_* consistent.
     tf_nodes = [
-        static_tf('tf_chassis_imu', 'chassis', 'imu_link'),
+        static_tf('tf_chassis_imu', 'chassis', 'imu_link',
+                  xyz=(0.380, 0.0, 0.0371), rpy=(0.0, 0.0, -math.pi / 2)),
         # Fallback statics when the URDF is disabled (identity offsets only).
         static_tf('tf_base_chassis', 'base_link', 'chassis',
                   condition=UnlessCondition(use_urdf)),
@@ -118,9 +123,10 @@ def generate_launch_description():
                 'map_frame': 'map',
                 'base_frame': 'base_link',
                 # Pose of imu_link in base_link: base_link->chassis is
-                # z +0.332 (URDF chassis_joint), chassis->imu_link identity.
-                'imu_in_base_xyz': [0.0, 0.0, 0.332],
-                'imu_in_base_rpy': [0.0, 0.0, 0.0],
+                # z +0.332 (URDF chassis_joint), chassis->imu_link is the
+                # measured mount above -> z 0.332 + 0.0371.
+                'imu_in_base_xyz': [0.380, 0.0, 0.3691],
+                'imu_in_base_rpy': [0.0, 0.0, -math.pi / 2],
             }, use_sim_time],
             output='screen',
         ),
