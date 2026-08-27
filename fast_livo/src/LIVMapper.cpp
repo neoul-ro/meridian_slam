@@ -1521,6 +1521,42 @@ void LIVMapper::publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry
   odomAftMapped.header.stamp = sec2Stamp(LidarMeasures.last_lio_update_time);
   set_posestamp(odomAftMapped.pose.pose);
 
+  // The filter's own covariance. It was already being computed and used --
+  // IMU_Processing propagates F P F' + Q, voxel_map applies (I - G) P on the
+  // LIO update, vio.cpp does the same on the visual one, and line 603 below
+  // sizes point uncertainty with it -- but it never reached the message, so
+  // consumers read 36 zeros, which claims the pose is exact.
+  //
+  // _state.cov is the 19x19 ESKF covariance with rotation at 0..2 and position
+  // at 3..5 (common_lib.h:173). Two conventions have to be reconciled: the
+  // rotation error is a body perturbation, rot_end * Exp(dtheta), while the
+  // position error is a world one, and ROS wants both in header.frame_id. So
+  // the rotation block rotates over as R C R' and the cross term picks up one
+  // R'. Getting this wrong is invisible until the rig yaws away from identity,
+  // which on this platform it does immediately -- imu_link sits at -90 deg.
+  {
+    const M3D R = _state.rot_end;
+    const M3D cov_pp = _state.cov.block<3, 3>(3, 3);
+    const M3D cov_rr = R * _state.cov.block<3, 3>(0, 0) * R.transpose();
+    const M3D cov_pr = _state.cov.block<3, 3>(3, 0) * R.transpose();
+    for (int i = 0; i < 3; ++i)
+    {
+      for (int j = 0; j < 3; ++j)
+      {
+        odomAftMapped.pose.covariance[i * 6 + j] = cov_pp(i, j);
+        odomAftMapped.pose.covariance[(i + 3) * 6 + (j + 3)] = cov_rr(i, j);
+        odomAftMapped.pose.covariance[i * 6 + (j + 3)] = cov_pr(i, j);
+        odomAftMapped.pose.covariance[(i + 3) * 6 + j] = cov_pr(j, i);
+      }
+    }
+  }
+  // Angular velocity is not a state -- it is the raw gyro minus the estimated
+  // bias -- so the filter holds no posterior for it, and anything written here
+  // would be a modelling choice rather than its answer. -1 in element 0 is the
+  // ROS convention for an unknown covariance, and is honest where 36 zeros are
+  // not.
+  odomAftMapped.twist.covariance[0] = -1.0;
+
   static std::shared_ptr<tf2_ros::TransformBroadcaster> br;
   br = std::make_shared<tf2_ros::TransformBroadcaster>(this->node);
   tf2::Transform transform;

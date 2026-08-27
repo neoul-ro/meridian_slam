@@ -8,14 +8,22 @@ It also publishes that same pose on /pose, which is the topic the Meridian
 pipeline consumes. FAST-LIVO2 used to publish /pose itself, but it only knows
 the IMU frame -- the base_link offset lives here and in the URDF, so the two
 would have had to be kept in step by hand.
+
+The same pose goes out a second time on /pose_cov as a
+PoseWithCovarianceStamped, which is what meridian_msgs/README.md asks an
+Isometry3d to arrive as. /pose stays a PoseStamped so nothing that already
+subscribes to it breaks.
 """
 
 import math
 
+import numpy as np
+
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import PoseStamped, TransformStamped
+from geometry_msgs.msg import (PoseStamped, PoseWithCovarianceStamped,
+                               TransformStamped)
 from tf2_ros import TransformBroadcaster
 
 
@@ -59,6 +67,7 @@ class OdomTfRelay(Node):
         self.declare_parameter('map_frame', 'map')
         self.declare_parameter('base_frame', 'base_link')
         self.declare_parameter('pose_topic', '/pose')
+        self.declare_parameter('pose_cov_topic', '/pose_cov')
         # Pose of imu_link expressed in base_link (must match the static
         # base_link -> chassis -> imu_link chain published by bringup).
         self.declare_parameter('imu_in_base_xyz', [0.0, 0.0, 0.0])
@@ -78,11 +87,15 @@ class OdomTfRelay(Node):
         self.tf_broadcaster = TransformBroadcaster(self)
         pose_topic = self.get_parameter('pose_topic').value
         self.pose_pub = self.create_publisher(PoseStamped, pose_topic, 10)
+        pose_cov_topic = self.get_parameter('pose_cov_topic').value
+        self.pose_cov_pub = self.create_publisher(
+            PoseWithCovarianceStamped, pose_cov_topic, 10)
+        self.warned_no_cov = False
         topic = self.get_parameter('odom_topic').value
         self.sub = self.create_subscription(Odometry, topic, self.on_odom, 10)
         self.get_logger().info(
             f'Relaying {topic} -> TF {self.map_frame} -> {self.base_frame}'
-            f' and -> {pose_topic}')
+            f' and -> {pose_topic}, {pose_cov_topic}')
 
     def on_odom(self, msg: Odometry):
         p = msg.pose.pose.position
@@ -115,6 +128,39 @@ class OdomTfRelay(Node):
         pose.pose.position.z = tf.transform.translation.z
         pose.pose.orientation = tf.transform.rotation
         self.pose_pub.publish(pose)
+
+        # And again with the covariance, which is the form the Meridian
+        # contract asks for. The odometry covariance describes the IMU pose and
+        # this one describes base_link, so it does not carry over untouched: a
+        # world-frame rotation error turns the whole rig about the IMU, and the
+        # mount offset converts that into a position error at base_link. With
+        # p_base = p_imu + off, dp_base = dp_imu - [off]x dtheta, so the 6x6
+        # Jacobian is J = [[I, -[off]x], [0, I]] and C_base = J C_imu J'. off
+        # is already in map coordinates from the transform above. The offset is
+        # 38 cm, so at a realistic 1 deg of yaw uncertainty this term is 6.6 mm
+        # -- not something to drop.
+        cov = np.asarray(msg.pose.covariance, dtype=float).reshape(6, 6)
+        pc = PoseWithCovarianceStamped()
+        pc.header = tf.header
+        pc.pose.pose = pose.pose
+        if cov[0, 0] < 0.0 or not cov.any():
+            # Upstream that predates the covariance being filled in publishes
+            # 36 zeros, which a consumer reads as a perfectly known pose. Say
+            # unknown instead, the way REP 103 does.
+            pc.pose.covariance[0] = -1.0
+            if not self.warned_no_cov:
+                self.warned_no_cov = True
+                self.get_logger().warn(
+                    f'{self.get_parameter("odom_topic").value} carries no '
+                    'covariance; publishing it as unknown (-1) rather than zero')
+        else:
+            skew = np.array([[0.0, -off[2], off[1]],
+                             [off[2], 0.0, -off[0]],
+                             [-off[1], off[0], 0.0]])
+            j = np.eye(6)
+            j[0:3, 3:6] = -skew
+            pc.pose.covariance = (j @ cov @ j.T).ravel().tolist()
+        self.pose_cov_pub.publish(pc)
 
 
 def main(args=None):
