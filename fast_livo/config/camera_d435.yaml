@@ -4,8 +4,9 @@
       model: Pinhole
       # Intel RealSense D435 color stream at 640x480.
       #
-      # !! PROVISIONAL. Not measured at this resolution -- carried over from the
-      # !! 848x480 Kalibr fit by the crop relation below, and due to be refitted.
+      # Carried over from the 848x480 Kalibr fit by the crop relation below.
+      # The crop was an assumption when this file moved to 640x480; it has since
+      # been measured, see below.
       #
       # The stream moved from 848x480 to 640x480 on 2026-08-26 so that
       # meridian_seg's letterbox lands on 256x192 (see camera.launch.py). Both
@@ -14,12 +15,26 @@
       # and cx moves by -104. The distortion coefficients are in normalised
       # image coordinates, so a crop does not touch them either.
       #
-      # Sanity check on the carry-over: the Kalibr fit put cx 7.53 px right of
-      # the image centre (431.53 vs 424). After the crop it is 327.53 vs 320 --
-      # the same 7.53 px. Consistent, but consistency is not a measurement:
-      # whether librealsense really produces 640x480 as a pure crop of 848x480
-      # on this unit is the assumption, and it has not been checked against the
-      # driver's own camera_info at this profile.
+      # The crop is measured, 2026-08-27. Two ways, both on this unit:
+      # librealsense reports fx 607.6362/607.6361, fy 606.7900/606.7900 and
+      # cy 245.3311/245.3311 at 640x480 and 848x480 -- identical to four
+      # decimals -- with cx 327.2284 vs 431.2284, exactly 104 apart. And the
+      # pixels agree: the same static scene shot at both profiles, matched on
+      # 1723 SIFT correspondences, fits a similarity of scale 0.99993 and
+      # tx 104.03 with 1666 inliers. A pure crop predicts 1.00000 and 104.00.
+      # So fx at 640x480 is the same number as at 848x480, and the carry-over
+      # is exact rather than assumed.
+      #
+      # A direct 640x480 Kalibr fit was attempted the same day and rejected.
+      # Three recordings gave fx 585.67, 592.74 and 593.55 as pose diversity
+      # improved -- converging about 2.3% below both the factory value and the
+      # 848 fit, which the scale measurement above says is impossible. The
+      # cause is the target: held by hand rather than taped down, the printed
+      # A3 sheet bows. Fitting a plane to the aligned depth over it and taking
+      # the quadratic residual gives 3.16 mm of systematic curvature across a
+      # 30.2 cm span, against a 1.67 mm plane-fit RMS that is depth noise.
+      # Kalibr assumes the corners are coplanar and absorbs that 1% of bow into
+      # focal length. Redo it with the sheet on something rigid and flat.
       #
       # Measured values it came from: Kalibr 2026-08-10, pinhole-radtan,
       # calib/cam_intrinsic2-camchain.yaml, 1637/1879 frames detected,
@@ -31,15 +46,21 @@
       # The factory values reported on /camera/camera/color/camera_info were
       # fx 607.64, fy 606.79, cx 431.23, cy 245.33 with zero distortion. The
       # firmware claims no distortion, but the lens really has k1 +0.108 /
-      # k2 -0.237, which is several pixels near the image border. cy is also
-      # 6.4 px off factory -- two independent recordings agreed on 238.9 to
-      # within 0.1 px, so that offset is real.
+      # k2 -0.237, which is several pixels near the image border.
+      #
+      # cy is the one number still in doubt. The two 2026-08-10 recordings at
+      # 848x480 agreed on 238.9 to within 0.1 px, but the three 2026-08-27
+      # recordings at 640x480 gave 241.35, 242.10 and 244.85, walking towards
+      # the factory 245.33 as the fits got better conditioned. Bow biases scale
+      # rather than the principal point, so it does not obviously explain a
+      # 6.4 px offset either way. A flat-target run settles this along with the
+      # focal length; until then this stays on the 08-10 pair.
       width: 640
       height: 480
       scale: 1.0
       fx: 605.6431395442901
       fy: 604.857587153714
-      cx: 327.53130932256033   # 431.53130932256033 - 104 (crop), PROVISIONAL
+      cx: 327.53130932256033   # 431.53130932256033 - 104, crop measured 104.03
       cy: 238.96893044451534
       # Caveat worth knowing: vikit only switches on its distortion path when
       # d0 != 0 (pinhole_camera.cpp:26), fast_livo's VIO never undistorts the
