@@ -36,14 +36,6 @@ def generate_launch_description():
             output='screen',
         ),
         Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            name='tf_chassis_imu',
-            arguments=['--frame-id', 'chassis', '--child-frame-id', 'imu_link'],
-            parameters=[{'use_sim_time': True}],
-            output='screen',
-        ),
-        Node(
             package='rviz2',
             executable='rviz2',
             name='rviz2',
