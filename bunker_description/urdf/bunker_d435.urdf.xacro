@@ -1058,8 +1058,7 @@
        ★ rpy 의 yaw -90도는 마운트가 돌아가 있어서가 아니라 imu_link 축이 RFU 라서다.
          vectornav 드라이버가 use_enu=true 로 기동하기 때문이고, ROS 표준 FLU 가
          아니다. velodyne16_vn100.yaml 의 extrinsic_R 이 같은 회전을 담고 있다.
-       ★ 이 값을 바꾸면 slam.launch.py 의 odom_tf_relay imu_in_base_xyz 도 같이
-         갱신할 것 (거기 값은 base_link 기준이라 z 에 chassis_joint 0.332 를 더한다).
+       odom_tf_relay 는 이 값을 TF 에서 조회하므로 따로 갱신할 곳은 없다.
        ★ bunker_tf/config/frames.yaml 과 반드시 같은 값이어야 한다. -->
   <joint name="imu_joint" type="fixed">
     <origin xyz="0.380 0 0.0371" rpy="0 0 ${-pi/2}" />

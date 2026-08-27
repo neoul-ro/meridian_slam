@@ -6,8 +6,14 @@ fixed base_link->imu_link mount offset and broadcasts map -> base_link.
 
 It also publishes that same pose on /pose, which is the topic the Meridian
 pipeline consumes. FAST-LIVO2 used to publish /pose itself, but it only knows
-the IMU frame -- the base_link offset lives here and in the URDF, so the two
-would have had to be kept in step by hand.
+the IMU frame.
+
+The mount offset is read from TF rather than configured. imu_link -> base_link
+runs entirely through the static URDF chain (base_link -> chassis -> imu_link)
+and does not touch map, so looking it up here is not circular even though this
+node is what publishes map -> base_link. It used to be a pair of parameters
+copied out of the URDF by hand, which is one more place for the rig geometry to
+drift out of step.
 
 The same pose goes out a second time on /pose_cov as a
 PoseWithCovarianceStamped, which is what meridian_msgs/README.md asks an
@@ -15,28 +21,15 @@ Isometry3d to arrive as. /pose stays a PoseStamped so nothing that already
 subscribes to it breaks.
 """
 
-import math
-
 import numpy as np
 
 import rclpy
 from rclpy.node import Node
+from rclpy.time import Time
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import (PoseStamped, PoseWithCovarianceStamped,
                                TransformStamped)
-from tf2_ros import TransformBroadcaster
-
-
-def quat_from_rpy(roll, pitch, yaw):
-    cr, sr = math.cos(roll / 2), math.sin(roll / 2)
-    cp, sp = math.cos(pitch / 2), math.sin(pitch / 2)
-    cy, sy = math.cos(yaw / 2), math.sin(yaw / 2)
-    return (
-        sr * cp * cy - cr * sp * sy,
-        cr * sp * cy + sr * cp * sy,
-        cr * cp * sy - sr * sp * cy,
-        cr * cp * cy + sr * sp * sy,
-    )
+from tf2_ros import Buffer, TransformBroadcaster, TransformException, TransformListener
 
 
 def quat_mult(a, b):
@@ -68,21 +61,19 @@ class OdomTfRelay(Node):
         self.declare_parameter('base_frame', 'base_link')
         self.declare_parameter('pose_topic', '/pose')
         self.declare_parameter('pose_cov_topic', '/pose_cov')
-        # Pose of imu_link expressed in base_link (must match the static
-        # base_link -> chassis -> imu_link chain published by bringup).
-        self.declare_parameter('imu_in_base_xyz', [0.0, 0.0, 0.0])
-        self.declare_parameter('imu_in_base_rpy', [0.0, 0.0, 0.0])
+        self.declare_parameter('imu_frame', 'imu_link')
 
         self.map_frame = self.get_parameter('map_frame').value
         self.base_frame = self.get_parameter('base_frame').value
-        t_bi = self.get_parameter('imu_in_base_xyz').value
-        rpy = self.get_parameter('imu_in_base_rpy').value
-        q_bi = quat_from_rpy(*rpy)
+        self.imu_frame = self.get_parameter('imu_frame').value
 
-        # Fixed inverse mount transform: imu_link -> base_link.
-        self.q_ib = quat_conj(q_bi)
-        tx, ty, tz = rotate_vec(self.q_ib, t_bi)
-        self.t_ib = (-tx, -ty, -tz)
+        # imu_link -> base_link, filled in on the first odometry message once
+        # robot_state_publisher has latched the static chain.
+        self.q_ib = None
+        self.t_ib = None
+        self.buffer = Buffer()
+        self.listener = TransformListener(self.buffer, self, spin_thread=True)
+        self.mount_warnings = 0
 
         self.tf_broadcaster = TransformBroadcaster(self)
         pose_topic = self.get_parameter('pose_topic').value
@@ -97,7 +88,36 @@ class OdomTfRelay(Node):
             f'Relaying {topic} -> TF {self.map_frame} -> {self.base_frame}'
             f' and -> {pose_topic}, {pose_cov_topic}')
 
+    def mount_ready(self):
+        """Latch imu_link -> base_link from TF. False until the URDF is up.
+
+        Nothing is published until this succeeds. Falling back to an assumed
+        offset would put base_link 38 cm from where it belongs and say nothing
+        about it, and a pose that is quietly wrong costs more than one that is
+        visibly missing.
+        """
+        if self.q_ib is not None:
+            return True
+        try:
+            tf = self.buffer.lookup_transform(self.imu_frame, self.base_frame, Time())
+        except TransformException as exc:
+            self.mount_warnings += 1
+            if self.mount_warnings in (1, 50) or self.mount_warnings % 200 == 0:
+                self.get_logger().warn(
+                    f'waiting for {self.imu_frame} -> {self.base_frame} on TF, '
+                    f'nothing published yet ({exc})')
+            return False
+        t, r = tf.transform.translation, tf.transform.rotation
+        self.t_ib = (t.x, t.y, t.z)
+        self.q_ib = (r.x, r.y, r.z, r.w)
+        self.get_logger().info(
+            f'{self.imu_frame} -> {self.base_frame} from TF: '
+            f'[{t.x:.4f}, {t.y:.4f}, {t.z:.4f}]')
+        return True
+
     def on_odom(self, msg: Odometry):
+        if not self.mount_ready():
+            return
         p = msg.pose.pose.position
         o = msg.pose.pose.orientation
         q_mi = (o.x, o.y, o.z, o.w)  # map(=camera_init) -> imu body

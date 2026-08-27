@@ -14,7 +14,6 @@ as its world frame; the legacy camera_init frame no longer exists):
                  +- wheel * 16              (URDF)
 """
 
-import math
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -75,18 +74,14 @@ def generate_launch_description():
             package='meridian_slam_bringup',
             executable='odom_tf_relay',
             name='odom_tf_relay',
+            # The mount offset is not configured here any more: the relay
+            # looks imu_link -> base_link up on TF, where the URDF already
+            # publishes it.
             parameters=[{
                 'odom_topic': '/aft_mapped_to_init',
                 'map_frame': 'map',
                 'base_frame': 'base_link',
-                # Pose of imu_link in base_link, composed from the URDF:
-                # base_link->chassis is z +0.332 (chassis_joint) and
-                # chassis->imu_link is [0.380, 0, 0.0371] yaw -90 (imu_joint),
-                # so z is 0.332 + 0.0371. The relay reads odometry rather than
-                # TF, so this has to be kept in step with bunker_d435.urdf.xacro
-                # by hand.
-                'imu_in_base_xyz': [0.380, 0.0, 0.3691],
-                'imu_in_base_rpy': [0.0, 0.0, -math.pi / 2],
+                'imu_frame': 'imu_link',
             }, use_sim_time],
             output='screen',
         ),
