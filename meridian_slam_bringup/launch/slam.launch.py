@@ -53,11 +53,8 @@ def generate_launch_description():
 
     args = [
         DeclareLaunchArgument('use_rviz', default_value='false'),
-        DeclareLaunchArgument('use_sim_time', default_value='false',
-                              description='Set true when replaying a bag with --clock'),
-        DeclareLaunchArgument('use_robot_description', default_value='true',
-                              description='Publish the bunker URDF via robot_state_publisher; '
-                                          'set false to fall back to bare static TFs'),
+        DeclareLaunchArgument('use_sim_time', default_value='false'),
+        DeclareLaunchArgument('use_robot_description', default_value='true'),
     ]
     use_sim_time = {'use_sim_time': ParameterValue(
         LaunchConfiguration('use_sim_time'), value_type=bool)}
