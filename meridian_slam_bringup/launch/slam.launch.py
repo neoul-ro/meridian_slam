@@ -20,19 +20,17 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.conditions import IfCondition, UnlessCondition
+from launch.conditions import IfCondition
 from launch.substitutions import Command, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
 
-def static_tf(name, parent, child, xyz=(0.0, 0.0, 0.0), rpy=(0.0, 0.0, 0.0),
-              condition=None):
+def static_tf(name, parent, child, xyz=(0.0, 0.0, 0.0), rpy=(0.0, 0.0, 0.0)):
     return Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         name=name,
-        condition=condition,
         arguments=[
             '--x', str(xyz[0]), '--y', str(xyz[1]), '--z', str(xyz[2]),
             '--roll', str(rpy[0]), '--pitch', str(rpy[1]), '--yaw', str(rpy[2]),
@@ -54,18 +52,15 @@ def generate_launch_description():
     args = [
         DeclareLaunchArgument('use_rviz', default_value='false'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
-        DeclareLaunchArgument('use_robot_description', default_value='true'),
     ]
     use_sim_time = {'use_sim_time': ParameterValue(
         LaunchConfiguration('use_sim_time'), value_type=bool)}
-    use_urdf = LaunchConfiguration('use_robot_description')
 
     description_nodes = [
         Node(
             package='robot_state_publisher',
             executable='robot_state_publisher',
             name='robot_state_publisher',
-            condition=IfCondition(use_urdf),
             parameters=[{
                 'robot_description': ParameterValue(
                     Command(['xacro ', urdf_file]), value_type=str),
@@ -77,30 +72,30 @@ def generate_launch_description():
             package='joint_state_publisher',
             executable='joint_state_publisher',
             name='joint_state_publisher',
-            condition=IfCondition(use_urdf),
             parameters=[use_sim_time],
             output='screen',
         ),
     ]
 
-    # Frames the URDF does not provide (IMU mount).
+    # imu_link is the one frame the URDF does not carry -- the vectornav was
+    # added to the rig after bunker_d435.urdf.xacro was written, so the URDF
+    # gives base_link, chassis, camera_link, velodyne{,_base_link} and the
+    # wheels, and nothing for the IMU. Without this, /vectornav/imu and
+    # /vectornav/pose are stamped with a frame that is not in the tree and any
+    # consumer drops them.
+    #
+    # FAST-LIVO2 itself does not read this: it takes the IMU-to-LiDAR relation
+    # from extrinsic_R / extrinsic_T in velodyne16_vn100.yaml. This edge is for
+    # everything else that has to place IMU-stamped data on the robot.
+    #
     # Measured mount from bunker_tf/config/frames.yaml: 15cm back from the front
     # edge, sitting on the top plate, 10cm directly below the camera. The yaw is
     # -90deg because imu_link is RFU (the vectornav driver defaults to
-    # use_enu=true), not the ROS-standard FLU — see extrinsic_R in
-    # velodyne16_vn100.yaml. Keep odom_tf_relay's imu_in_base_* consistent.
+    # use_enu=true), not the ROS-standard FLU. Keep odom_tf_relay's
+    # imu_in_base_* consistent.
     tf_nodes = [
         static_tf('tf_chassis_imu', 'chassis', 'imu_link',
                   xyz=(0.380, 0.0, 0.0371), rpy=(0.0, 0.0, -math.pi / 2)),
-        # Fallback statics when the URDF is disabled (identity offsets only).
-        static_tf('tf_base_chassis', 'base_link', 'chassis',
-                  condition=UnlessCondition(use_urdf)),
-        static_tf('tf_chassis_velo_base', 'chassis', 'velodyne_base_link',
-                  condition=UnlessCondition(use_urdf)),
-        static_tf('tf_velo_base_velo', 'velodyne_base_link', 'velodyne',
-                  condition=UnlessCondition(use_urdf)),
-        static_tf('tf_chassis_camera', 'chassis', 'camera_link',
-                  condition=UnlessCondition(use_urdf)),
     ]
 
     slam_nodes = [
