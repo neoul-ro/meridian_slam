@@ -14,7 +14,6 @@ which is included as part of this source code package.
 #define PREPROCESS_H_
 
 #include "common_lib.h"
-#include <livox_ros_driver2/msg/custom_msg.hpp>
 #include <pcl_conversions/pcl_conversions.h>
 
 using namespace std;
@@ -155,7 +154,6 @@ public:
   Preprocess();
   ~Preprocess();
 
-  void process(const livox_ros_driver2::msg::CustomMsg::SharedPtr &msg, PointCloudXYZI::Ptr &pcl_out);
   void process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg, PointCloudXYZI::Ptr &pcl_out);
   void set(bool feat_en, int lid_type, double bld, int pfilt_num);
 
@@ -172,7 +170,6 @@ public:
   std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> pub_corn;
 
 private:
-  void avia_handler(const livox_ros_driver2::msg::CustomMsg::SharedPtr &msg);
   void oust64_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
   void velodyne_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
   void mid360_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
