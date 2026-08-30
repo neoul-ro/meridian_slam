@@ -1,24 +1,21 @@
-"""Relay FAST-LIVO2 odometry to the TF tree required by the platform.
+"""FAST-LIVO2 오도메트리를 플랫폼이 요구하는 TF 트리로 릴레이한다.
 
-FAST-LIVO2 publishes /aft_mapped_to_init (map -> aft_mapped, the IMU body
-frame). The platform TF tree wants map -> base_link. This node applies the
-fixed base_link->imu_link mount offset and broadcasts map -> base_link.
+FAST-LIVO2 는 /aft_mapped_to_init (map -> aft_mapped, IMU 바디 프레임)을
+발행한다. 플랫폼 TF 트리가 원하는 것은 map -> base_link 다. 이 노드가 고정된
+base_link->imu_link 장착 오프셋을 적용해서 map -> base_link 를 브로드캐스트한다.
 
-It also publishes that same pose on /pose, which is the topic the Meridian
-pipeline consumes. FAST-LIVO2 used to publish /pose itself, but it only knows
-the IMU frame.
+같은 자세를 /pose 로도 발행한다. Meridian 파이프라인이 소비하는 토픽이다.
+예전에는 FAST-LIVO2 가 직접 /pose 를 냈지만, 그쪽은 IMU 프레임밖에 모른다.
 
-The mount offset is read from TF rather than configured. imu_link -> base_link
-runs entirely through the static URDF chain (base_link -> chassis -> imu_link)
-and does not touch map, so looking it up here is not circular even though this
-node is what publishes map -> base_link. It used to be a pair of parameters
-copied out of the URDF by hand, which is one more place for the rig geometry to
-drift out of step.
+장착 오프셋은 설정값이 아니라 TF 에서 읽는다. imu_link -> base_link 는 URDF 의
+정적 체인(base_link -> chassis -> imu_link)만 타고 map 을 거치지 않으므로,
+map -> base_link 를 발행하는 게 이 노드 자신이어도 순환이 아니다. 예전에는
+URDF 값을 손으로 베낀 파라미터 두 개였는데, 그러면 리그 형상이 어긋날 자리가
+하나 더 생긴다.
 
-The same pose goes out a second time on /pose_cov as a
-PoseWithCovarianceStamped, which is what meridian_msgs/README.md asks an
-Isometry3d to arrive as. /pose stays a PoseStamped so nothing that already
-subscribes to it breaks.
+같은 자세가 /pose_cov 로 PoseWithCovarianceStamped 형태로 한 번 더 나간다.
+meridian_msgs/README.md 가 Isometry3d 를 그 타입으로 받으라고 적고 있기
+때문이다. /pose 는 PoseStamped 로 남겨서 이미 구독 중인 쪽이 깨지지 않게 한다.
 """
 
 import numpy as np
@@ -67,8 +64,8 @@ class OdomTfRelay(Node):
         self.base_frame = self.get_parameter('base_frame').value
         self.imu_frame = self.get_parameter('imu_frame').value
 
-        # imu_link -> base_link, filled in on the first odometry message once
-        # robot_state_publisher has latched the static chain.
+        # imu_link -> base_link. robot_state_publisher 가 정적 체인을 래치한 뒤
+        # 첫 오도메트리 메시지에서 채워진다.
         self.q_ib = None
         self.t_ib = None
         self.buffer = Buffer()
@@ -89,12 +86,11 @@ class OdomTfRelay(Node):
             f' and -> {pose_topic}, {pose_cov_topic}')
 
     def mount_ready(self):
-        """Latch imu_link -> base_link from TF. False until the URDF is up.
+        """imu_link -> base_link 를 TF 에서 래치한다. URDF 가 올라오기 전엔 False.
 
-        Nothing is published until this succeeds. Falling back to an assumed
-        offset would put base_link 38 cm from where it belongs and say nothing
-        about it, and a pose that is quietly wrong costs more than one that is
-        visibly missing.
+        이게 성공하기 전까지는 아무것도 발행하지 않는다. 가정한 오프셋으로
+        대체하면 base_link 가 제자리에서 38 cm 벗어난 채 아무 말도 안 하게 되는데,
+        조용히 틀린 자세는 눈에 띄게 없는 자세보다 비싸다.
         """
         if self.q_ib is not None:
             return True
@@ -138,9 +134,9 @@ class OdomTfRelay(Node):
         tf.transform.rotation.w = q_mb[3]
         self.tf_broadcaster.sendTransform(tf)
 
-        # Same pose, as a topic. The stamp is carried through from the odometry
-        # unchanged: it is the LIO measurement time, and consumers pair this
-        # pose with the camera frame it belongs to.
+        # 같은 자세를 토픽으로. 스탬프는 오도메트리 것을 그대로 넘긴다 — LIO
+        # 측정 시각이고, 소비자는 이 자세를 그에 해당하는 카메라 프레임과
+        # 짝지어 쓴다.
         pose = PoseStamped()
         pose.header = tf.header
         pose.pose.position.x = tf.transform.translation.x
@@ -149,24 +145,22 @@ class OdomTfRelay(Node):
         pose.pose.orientation = tf.transform.rotation
         self.pose_pub.publish(pose)
 
-        # And again with the covariance, which is the form the Meridian
-        # contract asks for. The odometry covariance describes the IMU pose and
-        # this one describes base_link, so it does not carry over untouched: a
-        # world-frame rotation error turns the whole rig about the IMU, and the
-        # mount offset converts that into a position error at base_link. With
-        # p_base = p_imu + off, dp_base = dp_imu - [off]x dtheta, so the 6x6
-        # Jacobian is J = [[I, -[off]x], [0, I]] and C_base = J C_imu J'. off
-        # is already in map coordinates from the transform above. The offset is
-        # 38 cm, so at a realistic 1 deg of yaw uncertainty this term is 6.6 mm
-        # -- not something to drop.
+        # 공분산까지 붙여서 한 번 더. Meridian 계약이 요구하는 형태다.
+        # 오도메트리 공분산은 IMU 자세를 기술하고 이건 base_link 를 기술하므로
+        # 그대로 옮길 수 없다. 월드 프레임 회전 오차는 리그 전체를 IMU 기준으로
+        # 돌리고, 장착 오프셋이 그걸 base_link 의 위치 오차로 바꾼다.
+        # p_base = p_imu + off 이므로 dp_base = dp_imu - [off]x dtheta 이고,
+        # 6x6 야코비안은 J = [[I, -[off]x], [0, I]], C_base = J C_imu J' 다.
+        # off 는 위 변환에서 이미 map 좌표로 들어와 있다. 오프셋이 38 cm 라
+        # 현실적인 yaw 불확실성 1 도에서 이 항이 6.6 mm 다 — 버릴 크기가 아니다.
         cov = np.asarray(msg.pose.covariance, dtype=float).reshape(6, 6)
         pc = PoseWithCovarianceStamped()
         pc.header = tf.header
         pc.pose.pose = pose.pose
         if cov[0, 0] < 0.0 or not cov.any():
-            # Upstream that predates the covariance being filled in publishes
-            # 36 zeros, which a consumer reads as a perfectly known pose. Say
-            # unknown instead, the way REP 103 does.
+            # 공분산을 채우기 전 버전의 upstream 은 0 을 36 개 내보내는데,
+            # 소비자는 그걸 완벽히 아는 자세로 읽는다. REP 103 방식대로
+            # 모른다고 말해 준다.
             pc.pose.covariance[0] = -1.0
             if not self.warned_no_cov:
                 self.warned_no_cov = True
