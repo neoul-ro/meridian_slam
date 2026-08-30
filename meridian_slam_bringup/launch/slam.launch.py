@@ -1,5 +1,29 @@
 """FAST-LIVO2 + TF tree (URDF, statics, odom relay). No sensor drivers.
 
+The single entry point of this package. Sensor drivers live in meridian_sensor;
+whole-system bringup (drivers + SLAM + perception) is meridian_bringup, which
+includes this file as its SLAM stage.
+
+    live    ros2 launch meridian_slam_bringup slam.launch.py
+    replay  ... use_sim_time:=true use_rviz:=true
+    view    ... use_slam:=false use_robot_description:=false \
+                use_sim_time:=true use_rviz:=true
+
+"replay" runs SLAM against `ros2 bag play <bag> --clock`; stop the live system
+first, because two timebases diverge. "view" replays a bag that already carries
+SLAM output -- use_slam:=false drops FAST-LIVO2 and the odom relay, and
+use_robot_description:=false drops the URDF publishers, so the recorded TF is
+displayed as-is rather than published a second time.
+
+The Foxglove bridge is not launched here. It is visualization, it outlives any
+one run of this file, and a second one just loses the race for its port. Start
+it by hand when you want it:
+
+    ros2 run foxglove_bridge foxglove_bridge --ros-args -p port:=8765
+
+meridian_bringup still includes a foxglove.launch.py from this package by name;
+that include is dead now, and its owner has to drop it.
+
 Publishes the platform TF tree (FAST-LIVO2 is patched to use "map" directly
 as its world frame; the legacy camera_init frame no longer exists). Everything
 below base_link comes from the URDF, which use_robot_description:=false hands
@@ -45,10 +69,14 @@ def generate_launch_description():
         # base_link subtree, imu_link included, and odom_tf_relay waits on that
         # lookup before it publishes map -> base_link or /pose.
         DeclareLaunchArgument('use_robot_description', default_value='true'),
+        # Set false to view a bag that already carries SLAM output: the mapper
+        # and the relay stay down, and the recorded pose/TF play back untouched.
+        DeclareLaunchArgument('use_slam', default_value='true'),
     ]
     use_sim_time = {'use_sim_time': ParameterValue(
         LaunchConfiguration('use_sim_time'), value_type=bool)}
     use_urdf = LaunchConfiguration('use_robot_description')
+    use_slam = LaunchConfiguration('use_slam')
 
     description_nodes = [
         Node(
@@ -78,6 +106,7 @@ def generate_launch_description():
             package='fast_livo',
             executable='fastlivo_mapping',
             name='laserMapping',
+            condition=IfCondition(use_slam),
             parameters=[lio_config, cam_config, use_sim_time],
             output='screen',
         ),
@@ -85,6 +114,7 @@ def generate_launch_description():
             package='meridian_slam_bringup',
             executable='odom_tf_relay',
             name='odom_tf_relay',
+            condition=IfCondition(use_slam),
             # The mount offset is not configured here any more: the relay
             # looks imu_link -> base_link up on TF, where the URDF already
             # publishes it.
