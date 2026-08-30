@@ -1,7 +1,9 @@
 """FAST-LIVO2 + TF tree (URDF, statics, odom relay). No sensor drivers.
 
 Publishes the platform TF tree (FAST-LIVO2 is patched to use "map" directly
-as its world frame; the legacy camera_init frame no longer exists):
+as its world frame; the legacy camera_init frame no longer exists). Everything
+below base_link comes from the URDF, which use_robot_description:=false hands
+over to whoever else is publishing it:
 
     map -+- aft_mapped                      (dynamic, raw SLAM pose, debug)
          +- base_link                       (dynamic, from odom_tf_relay)
@@ -37,15 +39,23 @@ def generate_launch_description():
     args = [
         DeclareLaunchArgument('use_rviz', default_value='false'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
+        # Set false when a larger bringup already runs robot_state_publisher for
+        # this robot; two of them publish the same TF edges. Nothing here takes
+        # the URDF's place when it is off -- the other publisher owns the whole
+        # base_link subtree, imu_link included, and odom_tf_relay waits on that
+        # lookup before it publishes map -> base_link or /pose.
+        DeclareLaunchArgument('use_robot_description', default_value='true'),
     ]
     use_sim_time = {'use_sim_time': ParameterValue(
         LaunchConfiguration('use_sim_time'), value_type=bool)}
+    use_urdf = LaunchConfiguration('use_robot_description')
 
     description_nodes = [
         Node(
             package='robot_state_publisher',
             executable='robot_state_publisher',
             name='robot_state_publisher',
+            condition=IfCondition(use_urdf),
             parameters=[{
                 'robot_description': ParameterValue(
                     Command(['xacro ', urdf_file]), value_type=str),
@@ -57,6 +67,7 @@ def generate_launch_description():
             package='joint_state_publisher',
             executable='joint_state_publisher',
             name='joint_state_publisher',
+            condition=IfCondition(use_urdf),
             parameters=[use_sim_time],
             output='screen',
         ),
